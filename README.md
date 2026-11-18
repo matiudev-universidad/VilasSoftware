@@ -33,7 +33,7 @@ VilasSoftware/
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate        # En Windows: .venv\Scripts\activate
+.venv\Scripts\activate        # En Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env
 python manage.py migrate

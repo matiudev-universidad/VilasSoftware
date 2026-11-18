@@ -18,3 +18,6 @@ dist/
 .vscode/
 .idea/
 .DS_Store
+
+# Prototipo original (repo aparte, solo referencia)
+prototipo_vilas/

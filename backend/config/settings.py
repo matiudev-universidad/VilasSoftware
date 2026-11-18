@@ -100,6 +100,7 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": 12},  # política del proyecto: mínimo 12 caracteres
     },
     {
         "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
@@ -115,7 +116,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "es"
 
-TIME_ZONE = "UTC"
+TIME_ZONE = "America/Santiago"
 
 USE_I18N = True
 
@@ -126,6 +127,18 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = "static/"
+
+# Contraseñas: Django guarda con PBKDF2-SHA256 (el primero de la lista).
+# PrototipoPBKDF2Hasher solo verifica los hashes heredados del prototipo y,
+# tras el primer inicio de sesión, Django los reemplaza por su propio formato.
+PASSWORD_HASHERS = [
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
+    "django.contrib.auth.hashers.Argon2PasswordHasher",
+    "django.contrib.auth.hashers.BCryptSHA256PasswordHasher",
+    "django.contrib.auth.hashers.ScryptPasswordHasher",
+    "api.hashers.PrototipoPBKDF2Hasher",
+]
 
 
 # Email
@@ -141,7 +154,15 @@ MAILERS = {
 # Django REST Framework
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
+    # Sesión de Django (cookie) + CSRF. Por defecto, toda la API exige haber iniciado sesión.
+    "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework.authentication.SessionAuthentication"],
+    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
 }
+
+# El frontend (Vite en :5173) llama a /api a través del proxy de desarrollo
+CSRF_TRUSTED_ORIGINS = os.getenv(
+    "CSRF_TRUSTED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+).split(",")
 
 # CORS: orígenes del frontend (Vite) permitidos
 CORS_ALLOWED_ORIGINS = os.getenv(

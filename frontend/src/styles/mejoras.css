@@ -1,0 +1,49 @@
+/* ==========================================================================
+   Mejoras sobre el prototipo (pedidas en la revisión). prototipo.css queda
+   como copia fiel; todo lo nuevo va aquí, con los mismos tokens y estilo.
+   ========================================================================== */
+
+/* Contenido a todo el ancho de la pantalla (antes máx. 1340 px) */
+.content { max-width: none; }
+@media (min-width: 1600px) {
+  .content { padding-left: 40px; padding-right: 40px; }
+  .grid-main { grid-template-columns: minmax(0, 2.4fr) minmax(340px, 1fr); }
+}
+
+/* Botón "Volver" de la barra superior */
+.btn-back:disabled { opacity: .4; }
+
+/* Filtros con nombre arriba */
+.campo-filtro { display: flex; flex-direction: column; gap: 4px; }
+.campo-filtro > span { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.filters.con-etiquetas { align-items: flex-end; }
+.filters input[type="date"] { width: auto; height: 40px; }
+
+/* Selector de período rápido (Mantenciones) */
+.chips.periodos .chip { height: 40px; }
+
+/* Métricas del panel que llevan a otra vista */
+.metrics a { background: var(--paper); padding: 12px 14px; color: inherit; text-decoration: none; display: block; transition: background .15s; }
+.metrics a:hover { background: var(--sand); }
+.metrics a .k-go { float: right; opacity: 0; transition: opacity .15s; }
+.metrics a:hover .k-go { opacity: 1; }
+
+/* Título + pestañas dentro de la cabecera de un panel */
+.panel-tabs { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+
+
+/* Reportes: lista de equipos con casillas */
+.rep-lista { max-height: 340px; overflow: auto; border: 1px solid var(--line-2); border-radius: var(--r); }
+.rep-lista table { margin: 0; }
+.rep-lista thead th { position: sticky; top: 0; background: var(--paper); z-index: 1; }
+.rep-lista tr { cursor: pointer; }
+.rep-lista input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--red); margin: 0; }
+.rep-barra { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.rep-barra .grow { flex: 1; }
+.sheet + .sheet { margin-top: 24px; }
+@media print {
+  .sheet + .sheet { margin-top: 0; break-before: page; page-break-before: always; }
+}
+
+/* Ficha de dispositivo */
+.disp-acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }

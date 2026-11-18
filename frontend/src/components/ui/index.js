@@ -1,0 +1,10 @@
+// Componentes base de la interfaz (equivalentes a los helpers de prototipo_vilas/js/app.js)
+export { Icon, IconoTipo, TIPOS_EQUIPO } from './Icon'
+export { Button, IconButton } from './Button'
+export { Status, Segments, Num, Callout, Empty, PageHead } from './Indicadores'
+export { usePaginacion, Pager, POR_PAGINA } from './Paginacion'
+export { Modal } from './Modal'
+export { ToastProvider, useToast } from './Toast'
+export { ConfirmarProvider, useConfirmar } from './Confirmar'
+export { SelectorEquipo, OpcionesEquipos } from './SelectorEquipo'
+export { useRecordado, useFiltros, useOrden, SelectOrden, compararTexto, BotonLimpiar, Campo } from './Tablas'
