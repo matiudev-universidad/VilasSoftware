@@ -105,11 +105,13 @@ def cambiar_password(request):
 
 @api_view(["POST"])
 def restablecer(request):
-    """'Restablecer datos': vuelve la base al estado inicial manteniendo la sesión."""
+    """'Restablecer datos': vuelve la base al estado inicial manteniendo la sesión. Solo el administrador."""
+    logica.requiere(request.user, "restablecer")
     call_command("cargar_datos", reset=True)
     u = request.user
     u.refresh_from_db()
     update_session_auth_hash(request, u)
+    logica.auditar(u, "Restablecer datos", f"{logica.nombre_de(u)} volvió los datos al estado inicial")
     return Response(status=204)
 
 

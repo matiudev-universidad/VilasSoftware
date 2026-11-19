@@ -9,7 +9,7 @@ from .errores import ErrorNegocio
 # ---------------- Roles y permisos (RBAC) ----------------
 PERMISOS = {
     "admin": ["ver", "registrarLectura", "corregirLectura", "registrarMantencion", "verInsumos", "crudEquipos",
-              "gestionarAlertas", "reportes", "auditoria", "verDispositivos", "gestionarDispositivos"],
+              "gestionarAlertas", "reportes", "auditoria", "verDispositivos", "gestionarDispositivos", "restablecer"],
     "encargada": ["ver", "registrarLectura", "corregirLectura", "registrarMantencion", "verInsumos", "crudEquipos",
                   "gestionarAlertas", "reportes", "verDispositivos"],
     "asistente": ["ver", "registrarLectura", "corregirLectura", "registrarMantencion", "verInsumos"],

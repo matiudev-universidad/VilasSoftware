@@ -109,6 +109,7 @@ function BarraSuperior() {
   const hayAnterior = key !== 'default'
   const confirmar = useConfirmar()
   const toast = useToast()
+  const { puede } = useAuth()
   const { datos: base } = useConsulta(() => catalogos.getBase())
 
   const segmento = pathname.split('/')[1] || 'dashboard'
@@ -149,9 +150,11 @@ function BarraSuperior() {
       </div>
       <div className="top-right">
         <Reloj />
-        <Button variant="ghost" size="sm" icon="reset" onClick={restablecer} title="Vuelve a los datos iniciales">
-          Restablecer datos
-        </Button>
+        {puede('restablecer') && (
+          <Button variant="ghost" size="sm" icon="reset" onClick={restablecer} title="Vuelve a los datos iniciales">
+            Restablecer datos
+          </Button>
+        )}
       </div>
     </header>
   )
