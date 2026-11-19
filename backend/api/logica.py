@@ -5,7 +5,7 @@ Cada función recibe el usuario que actúa para validar permisos y registrar la 
 import random
 import re
 import time
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from django.db import transaction
 from django.utils import timezone
@@ -13,11 +13,9 @@ from django.utils import timezone
 from .errores import ErrorNegocio, SinPermiso
 from .models import (
     Auditoria, Categoria, Destino, Dispositivo, Equipo, EstadoSync, GestionAlerta, Incidencia, Insumo, Lectura,
-    Mantencion, MantencionInsumo, Telemetria,
+    LecturaPendiente, Mantencion, MantencionInsumo, Telemetria,
 )
-from .reglas import (
-    AUTO_SEGUNDOS, COOLDOWN_SEGUNDOS, PERMISOS, aviso_para, es_gps, estado_equipo, fmt, origen_de,
-)
+from .reglas import AUTO_SEGUNDOS, COOLDOWN_SEGUNDOS, PERMISOS, es_gps, estado_equipo, fmt, origen_de
 
 SISTEMA = "Sistema"
 
@@ -38,15 +36,20 @@ def requiere(usuario, permiso):
         raise SinPermiso()
 
 
+def _autenticado(usuario):
+    """El User si inició sesión; None si la acción la hace el sistema."""
+    return usuario if usuario is not None and getattr(usuario, "is_authenticated", False) else None
+
+
 def auditar(usuario, accion, detalle, valor_anterior=None):
     Auditoria.objects.create(
-        fecha=timezone.now(), usuario=nombre_de(usuario), accion=accion, detalle=detalle, valor_anterior=valor_anterior
+        fecha=timezone.now(), usuario=_autenticado(usuario), accion=accion, detalle=detalle, valor_anterior=valor_anterior
     )
 
 
 def obtener_equipo(equipo_id):
     try:
-        return Equipo.objects.select_related("destino").get(pk=equipo_id)
+        return Equipo.objects.get(pk=equipo_id)
     except (Equipo.DoesNotExist, ValueError, TypeError):
         raise ErrorNegocio("Equipo no encontrado.")
 
@@ -113,7 +116,7 @@ def crear_equipo(usuario, d):
         marca=d.get("marca") or "", modelo=d.get("modelo") or "", patente=d.get("patente") or "—",
         cliente=d.get("cliente") or "", destino=dest, horometro=_num(d.get("horometro"), 0),
         unidad=unidad, intervalo=int(_num(d.get("intervalo"))), ultima_mantencion=_num(d.get("ultimaMantencion"), 0),
-        aviso=aviso_para(unidad, d.get("tipo"), cat), lat=dest.lat, lng=dest.lng,
+        lat=dest.lat, lng=dest.lng,
     )
     auditar(usuario, "Alta de equipo", f"{eq.codigo} · {eq.nombre}")
     return eq
@@ -157,8 +160,9 @@ def eliminar_equipo(usuario, equipo_id):
 
 # ---------------- Lecturas ----------------
 @transaction.atomic
-def registrar_lectura(usuario, equipo_id, valor, origen="manual", motivo="", dispositivo="", fecha=None):
-    """Devuelve {ok, estado} | {ok: False, requiereMotivo, anterior} | {ok: False, inconsistente}."""
+def registrar_lectura(usuario, equipo_id, valor, origen="manual", motivo="", dispositivo=None, fecha=None):
+    """dispositivo: el Dispositivo que envió la lectura (None si es manual).
+    Devuelve {ok, estado} | {ok: False, requiereMotivo, anterior} | {ok: False, inconsistente}."""
     eq = obtener_equipo(equipo_id)
     valor = _num(valor)
     if valor is None or valor < 0:
@@ -177,12 +181,13 @@ def registrar_lectura(usuario, equipo_id, valor, origen="manual", motivo="", dis
         # El dispositivo informó menos que la última lectura: posible reinicio o falla
         Incidencia.objects.create(equipo=eq, fecha=fecha, valor=valor, anterior=anterior, dispositivo=dispositivo)
         auditar(usuario, "Lectura inconsistente",
-                f"{eq.codigo}: {dispositivo} informó {fmt(valor)} con último valor {fmt(anterior)} (no se actualizó el horómetro)")
+                f"{eq.codigo}: {dispositivo.device_id if dispositivo else origen} informó {fmt(valor)} con último valor {fmt(anterior)} (no se actualizó el horómetro)")
         return {"ok": False, "inconsistente": True}
 
     Lectura.objects.create(
         equipo=eq, valor=valor, fecha=fecha, origen=origen,
-        usuario=dispositivo if origen != "manual" else nombre_de(usuario),
+        registrado_por=_autenticado(usuario) if origen == "manual" else None,
+        dispositivo=dispositivo if origen != "manual" else None,
         es_correccion=es_correccion, motivo=motivo or "", valor_anterior=anterior,
     )
     eq.horometro = valor
@@ -220,17 +225,24 @@ def registrar_mantencion(usuario, d):
         raise ErrorNegocio("Ingresa el horómetro al momento de la mantención.")
     if valor < eq.ultima_mantencion:
         raise ErrorNegocio(f"El horómetro no puede ser menor al de la última mantención ({fmt(eq.ultima_mantencion)}).")
+    # Los insumos deben existir en el catálogo de bodega (nombre y unidad salen de ahí)
+    insumos = []
+    for i in d.get("insumos") or []:
+        insumo = Insumo.objects.filter(pk=i.get("codigo")).first()
+        if insumo is None:
+            raise ErrorNegocio(f"Insumo no encontrado en bodega: {i.get('codigo') or '(sin código)'}.")
+        cantidad = _num(i.get("cantidad"), 0)
+        if cantidad <= 0:
+            raise ErrorNegocio(f"La cantidad de {insumo.nombre} debe ser mayor a 0.")
+        insumos.append((insumo, cantidad))
     m = Mantencion.objects.create(
         equipo=eq, ot=(d.get("ot") or "").strip() or "OT-" + str(int(time.time() * 1000))[-6:],
         fecha=d["fecha"], tipo=d.get("tipo") or "", valor=valor,
-        responsable=(d.get("responsable") or "").strip() or nombre_de(usuario), registrado_por=nombre_de(usuario),
+        responsable=(d.get("responsable") or "").strip() or nombre_de(usuario), registrado_por=_autenticado(usuario),
     )
-    insumos = d.get("insumos") or []
-    for i in insumos:
-        MantencionInsumo.objects.create(
-            mantencion=m, insumo=Insumo.objects.filter(pk=i.get("codigo")).first(),
-            nombre=i.get("nombre", ""), cantidad=_num(i.get("cantidad"), 0), unidad=i.get("unidad", ""),
-        )
+    MantencionInsumo.objects.bulk_create(
+        MantencionInsumo(mantencion=m, insumo=insumo, cantidad=cantidad) for insumo, cantidad in insumos
+    )
     eq.ultima_mantencion = valor
     if valor > eq.horometro:
         eq.horometro = valor
@@ -244,10 +256,10 @@ def registrar_mantencion(usuario, d):
 # ---------------- Alertas ----------------
 def alertas():
     """Calculadas con el semáforo: rojo → naranja → amarillo, y por lo que resta."""
-    incidencias = {i.equipo_id: i for i in Incidencia.objects.filter(resuelta=False)}
-    gestiones = {g.equipo_id: g for g in GestionAlerta.objects.all()}
+    incidencias = {i.equipo_id: i for i in Incidencia.objects.filter(resuelta=False).select_related("dispositivo")}
+    gestiones = {g.equipo_id: g for g in GestionAlerta.objects.select_related("usuario")}
     lista = []
-    for eq in Equipo.objects.filter(activo=True).select_related("destino"):
+    for eq in Equipo.objects.filter(activo=True):
         inc = incidencias.get(eq.id)
         est = estado_equipo(eq, bool(inc))
         if inc:
@@ -265,7 +277,7 @@ def marcar_en_gestion(usuario, equipo_id, nota=""):
     requiere(usuario, "gestionarAlertas")
     eq = obtener_equipo(equipo_id)
     GestionAlerta.objects.update_or_create(
-        equipo=eq, defaults={"usuario": nombre_de(usuario), "fecha": timezone.now(), "nota": nota or ""}
+        equipo=eq, defaults={"usuario": usuario, "fecha": timezone.now(), "nota": nota or ""}
     )
     auditar(usuario, "Alerta en gestión", f"{eq.codigo} marcada en gestión" + (f" · {nota}" if nota else ""))
 
@@ -290,6 +302,8 @@ def obtener_dispositivo(dispositivo_id):
 def vincular_dispositivo(usuario, dispositivo_id, equipo_id):
     requiere(usuario, "gestionarDispositivos")
     d = obtener_dispositivo(dispositivo_id)
+    if d.estado == Dispositivo.Estado.BAJA:
+        raise ErrorNegocio("El dispositivo está dado de baja.")
     eq = obtener_equipo(equipo_id) if equipo_id else None
     if eq and Dispositivo.objects.filter(equipo=eq).exclude(pk=d.pk).exclude(estado=Dispositivo.Estado.BAJA).exists():
         raise ErrorNegocio("Ese equipo ya tiene un dispositivo vinculado.")
@@ -323,8 +337,9 @@ def registrar_dispositivo(usuario, device_id, tipo):
 def dar_de_baja_dispositivo(usuario, dispositivo_id):
     requiere(usuario, "gestionarDispositivos")
     d = obtener_dispositivo(dispositivo_id)
-    d.estado, d.equipo, d.cola = Dispositivo.Estado.BAJA, None, []
+    d.estado, d.equipo = Dispositivo.Estado.BAJA, None
     d.save()
+    d.pendientes.all().delete()
     auditar(usuario, "Baja de dispositivo", d.device_id)
 
 
@@ -341,12 +356,12 @@ def cambiar_conexion(usuario, dispositivo_id, online):
         return {"enviados": 0, "total": 0}
     d.estado = Dispositivo.Estado.ONLINE
     d.ultima_conexion = timezone.now()
-    pendientes, d.cola = d.cola, []
     d.save()
+    pendientes = list(d.pendientes.all())
+    d.pendientes.all().delete()
     enviados = 0
     for p in pendientes:
-        fecha = timezone.make_aware(datetime.fromisoformat(p["fecha"]))
-        r = registrar_lectura(usuario, d.equipo_id, p["valor"], origen=origen_de(d), dispositivo=d.device_id, fecha=fecha)
+        r = registrar_lectura(usuario, d.equipo_id, p.valor, origen=origen_de(d), dispositivo=d, fecha=p.fecha)
         enviados += 1 if r["ok"] else 0
     auditar(usuario, "Sincronización de cola", f"{d.device_id}: {len(pendientes)} lectura(s) despachadas al reconectar")
     return {"enviados": enviados, "total": len(pendientes)}
@@ -360,7 +375,8 @@ def simular_lectura(usuario, dispositivo_id, reinicio=False):
     if not d.equipo_id:
         raise ErrorNegocio("Vincula el dispositivo a un equipo antes de simular.")
     eq = d.equipo
-    ultimo = d.cola[-1]["valor"] if d.cola else eq.horometro
+    pendiente = d.pendientes.last()
+    ultimo = pendiente.valor if pendiente else eq.horometro
     incremento = 150 + round(random.random() * 350) if eq.unidad == "km" else 4 + round(random.random() * 10)
     valor = 3 if reinicio else ultimo + incremento
     ahora = timezone.now()
@@ -371,12 +387,11 @@ def simular_lectura(usuario, dispositivo_id, reinicio=False):
         {"deviceId": d.device_id, "horas": valor, "lat": eq.lat, "lng": eq.lng, "timestamp": marca}
     )
     if d.estado == Dispositivo.Estado.OFFLINE:
-        d.cola = [*d.cola, {"valor": valor, "fecha": marca}]
-        d.save()
+        LecturaPendiente.objects.create(dispositivo=d, valor=valor, fecha=ahora)
         return {"encolada": True, "payload": payload}
     d.ultima_conexion = ahora
     d.save()
-    r = registrar_lectura(usuario, eq.id, valor, origen=origen_de(d), dispositivo=d.device_id, fecha=ahora)
+    r = registrar_lectura(usuario, eq.id, valor, origen=origen_de(d), dispositivo=d, fecha=ahora)
     return {"payload": payload, **r}
 
 
@@ -384,11 +399,12 @@ def simular_lectura(usuario, dispositivo_id, reinicio=False):
 def filas_telemetria():
     """Equipos en faena minera o con GPS: [(equipo, telemetria, dispositivo|None)]"""
     disp_por_equipo = {
-        d.equipo_id: d for d in Dispositivo.objects.exclude(estado=Dispositivo.Estado.BAJA).exclude(equipo=None)
+        d.equipo_id: d
+        for d in Dispositivo.objects.exclude(estado=Dispositivo.Estado.BAJA).exclude(equipo=None).prefetch_related("pendientes")
     }
     tele = {t.equipo_id: t for t in Telemetria.objects.all()}
     filas = []
-    for eq in Equipo.objects.filter(activo=True).select_related("destino"):
+    for eq in Equipo.objects.filter(activo=True):
         disp = disp_por_equipo.get(eq.id)
         if eq.destino.tipo != "Minería" and not es_gps(disp):
             continue
@@ -431,7 +447,7 @@ def sincronizar_telemetria(usuario, manual):
         actualizados += 1
         # el horómetro registra una lectura cada vez que se completa una hora/km entero
         if int(t.horas) > eq.horometro:
-            registrar_lectura(usuario, eq.id, int(t.horas), origen=origen_de(disp), dispositivo=disp.device_id, fecha=ahora)
+            registrar_lectura(usuario, eq.id, int(t.horas), origen=origen_de(disp), dispositivo=disp, fecha=ahora)
     sync.ultima = ahora
     if manual:
         sync.ultima_manual = ahora

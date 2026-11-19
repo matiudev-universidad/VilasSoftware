@@ -3,9 +3,22 @@ Modelos del Sistema de Control de Mantenciones — Vila's Motor (base Iquique).
 
 Equivalen a las colecciones del prototipo (prototipo_vilas/js/data.js y flota.js).
 Los usuarios usan el User de Django (contraseña con hash PBKDF2) + un Perfil con el rol.
+
+Normalización:
+- Quién hizo algo (lecturas, mantenciones, alertas, auditoría) es una FK al User, no un nombre en texto.
+- Las lecturas e incidencias enviadas por un ESP32/GPS apuntan al Dispositivo con una FK.
+- Los insumos de una mantención apuntan al Insumo (nombre y unidad salen del catálogo).
+- No hay listas ni objetos guardados como JSON: la pluma y la cola sin señal tienen su propia tabla.
+- El aviso anticipado no se guarda: se calcula desde la unidad, el tipo y la categoría (reglas.aviso_para).
+- Desnormalización intencional: Equipo.horometro y Equipo.ultima_mantencion guardan el último valor
+  (que también está en Lectura/Mantencion) para calcular el semáforo de 384 equipos sin recorrer el historial.
+  Solo se actualizan dentro de la misma transacción que crea la lectura o la mantención (logica.py).
 """
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
+
+from .reglas import aviso_para
 
 
 class Perfil(models.Model):
@@ -52,6 +65,13 @@ class Destino(models.Model):
         return f"{self.nombre} · {self.tipo}"
 
 
+class EquipoManager(models.Manager):
+    """Trae siempre la categoría, el destino y la pluma en la misma consulta (evita N+1 en listados)."""
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("categoria", "destino", "pluma")
+
+
 class Equipo(models.Model):
     codigo = models.CharField(max_length=10, help_text="Ej: VR005. Único entre los equipos activos.")
     nombre = models.CharField(max_length=120)
@@ -66,18 +86,42 @@ class Equipo(models.Model):
     unidad = models.CharField(max_length=2, choices=[("h", "Horas"), ("km", "Kilómetros")], default="h")
     intervalo = models.PositiveIntegerField(help_text="Cada cuántas h/km corresponde mantención preventiva")
     ultima_mantencion = models.FloatField(default=0, help_text="Lectura en la última mantención")
-    aviso = models.PositiveIntegerField(help_text="Aviso anticipado: 50 h · 300 km camionetas · 1.000 km transporte")
     activo = models.BooleanField(default=True, help_text="Baja lógica: el historial se conserva")
     lat = models.FloatField(null=True, blank=True)
     lng = models.FloatField(null=True, blank=True)
     ultima_ubicacion = models.DateTimeField(null=True, blank=True)
-    pluma = models.JSONField(null=True, blank=True, help_text="Pluma montada (camiones pluma): {marca, modelo}")
+
+    objects = EquipoManager()
 
     class Meta:
         ordering = ["codigo"]
+        constraints = [
+            # El código se puede reutilizar solo si el equipo anterior fue dado de baja
+            models.UniqueConstraint(fields=["codigo"], condition=Q(activo=True), name="equipo_codigo_unico_activo"),
+            models.CheckConstraint(condition=Q(intervalo__gt=0), name="equipo_intervalo_positivo"),
+            models.CheckConstraint(condition=Q(horometro__gte=0), name="equipo_horometro_no_negativo"),
+            models.CheckConstraint(condition=Q(ultima_mantencion__gte=0), name="equipo_ultima_mantencion_no_negativa"),
+        ]
+        indexes = [models.Index(fields=["activo", "codigo"], name="equipo_activo_codigo_idx")]
 
     def __str__(self):
         return f"{self.codigo} · {self.nombre}"
+
+    @property
+    def aviso(self):
+        """Aviso anticipado (no se guarda: depende de la unidad, el tipo y la categoría)."""
+        return aviso_para(self.unidad, self.tipo, self.categoria)
+
+
+class Pluma(models.Model):
+    """Pluma montada en un camión pluma (si existe la fila, el equipo tiene pluma)."""
+
+    equipo = models.OneToOneField(Equipo, on_delete=models.CASCADE, primary_key=True, related_name="pluma")
+    marca = models.CharField(max_length=60, blank=True)
+    modelo = models.CharField(max_length=60, blank=True)
+
+    def __str__(self):
+        return f"Pluma {self.marca} {self.modelo}".strip()
 
 
 class Insumo(models.Model):
@@ -87,6 +131,9 @@ class Insumo(models.Model):
     nombre = models.CharField(max_length=120)
     stock = models.FloatField(default=0)
     unidad = models.CharField(max_length=10)
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=Q(stock__gte=0), name="insumo_stock_no_negativo")]
 
     def __str__(self):
         return f"{self.nombre} ({self.stock:g} {self.unidad})"
@@ -98,25 +145,31 @@ class Mantencion(models.Model):
     fecha = models.DateField()
     tipo = models.CharField(max_length=40, help_text="Ej: Preventiva 250 h, Correctiva")
     valor = models.FloatField(help_text="Lectura al momento de la mantención")
-    responsable = models.CharField(max_length=120, blank=True)
-    registrado_por = models.CharField(max_length=120, blank=True)
+    responsable = models.CharField(max_length=120, blank=True, help_text="Taller o técnico que la ejecutó")
+    registrado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="mantenciones",
+        help_text="Usuario que la registró en el sistema (vacío en mantenciones históricas importadas)",
+    )
 
     class Meta:
         ordering = ["-fecha", "-id"]
         verbose_name_plural = "mantenciones"
+        constraints = [models.CheckConstraint(condition=Q(valor__gte=0), name="mantencion_valor_no_negativo")]
+        indexes = [models.Index(fields=["equipo", "-fecha"], name="mantencion_equipo_fecha_idx")]
 
     def __str__(self):
         return f"{self.equipo.codigo} · {self.tipo} · {self.fecha}"
 
 
 class MantencionInsumo(models.Model):
-    """Insumo utilizado en una mantención (se guarda nombre y unidad tal como estaban)."""
+    """Insumo utilizado en una mantención (tabla intermedia Mantención ↔ Insumo con la cantidad)."""
 
     mantencion = models.ForeignKey(Mantencion, on_delete=models.CASCADE, related_name="insumos")
-    insumo = models.ForeignKey(Insumo, on_delete=models.SET_NULL, null=True, blank=True)
-    nombre = models.CharField(max_length=120)
+    insumo = models.ForeignKey(Insumo, on_delete=models.PROTECT, related_name="usos")
     cantidad = models.FloatField()
-    unidad = models.CharField(max_length=10)
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=Q(cantidad__gt=0), name="mantencion_insumo_cantidad_positiva")]
 
 
 class Lectura(models.Model):
@@ -129,13 +182,43 @@ class Lectura(models.Model):
     valor = models.FloatField()
     fecha = models.DateTimeField()
     origen = models.CharField(max_length=10, choices=Origen.choices, default=Origen.MANUAL)
-    usuario = models.CharField(max_length=120, help_text="Quién registró: nombre del usuario o ID del dispositivo")
+    # Quién la registró: un usuario (lectura manual) o un dispositivo (ESP32/GPS), nunca ambos
+    registrado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="lecturas"
+    )
+    dispositivo = models.ForeignKey(
+        "Dispositivo", on_delete=models.PROTECT, null=True, blank=True, related_name="lecturas"
+    )
     es_correccion = models.BooleanField(default=False)
     motivo = models.TextField(blank=True)
     valor_anterior = models.FloatField(null=True, blank=True)
 
     class Meta:
         ordering = ["-fecha", "-id"]
+        constraints = [
+            models.CheckConstraint(condition=Q(valor__gte=0), name="lectura_valor_no_negativo"),
+            models.CheckConstraint(
+                condition=(Q(origen="manual", dispositivo__isnull=True)
+                           | (~Q(origen="manual") & Q(dispositivo__isnull=False, registrado_por__isnull=True))),
+                name="lectura_origen_coherente",
+            ),
+            models.CheckConstraint(
+                condition=Q(es_correccion=False) | ~Q(motivo="") | ~Q(origen="manual"),
+                name="lectura_correccion_con_motivo",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["equipo", "-fecha"], name="lectura_equipo_fecha_idx"),
+            models.Index(fields=["dispositivo", "-fecha"], name="lectura_dispositivo_fecha_idx"),
+        ]
+
+    @property
+    def autor(self):
+        """Nombre a mostrar: el ID del dispositivo o el nombre del usuario."""
+        if self.dispositivo_id:
+            return self.dispositivo.device_id
+        u = self.registrado_por
+        return (u.get_full_name() or u.username) if u else ""
 
 
 class Incidencia(models.Model):
@@ -145,8 +228,13 @@ class Incidencia(models.Model):
     fecha = models.DateTimeField()
     valor = models.FloatField()
     anterior = models.FloatField()
-    dispositivo = models.CharField(max_length=20, blank=True)
+    dispositivo = models.ForeignKey(
+        "Dispositivo", on_delete=models.PROTECT, null=True, blank=True, related_name="incidencias"
+    )
     resuelta = models.BooleanField(default=False)
+
+    class Meta:
+        indexes = [models.Index(fields=["equipo", "resuelta"], name="incidencia_equipo_resuelta_idx")]
 
 
 class Dispositivo(models.Model):
@@ -163,10 +251,31 @@ class Dispositivo(models.Model):
     equipo = models.ForeignKey(Equipo, on_delete=models.SET_NULL, null=True, blank=True, related_name="dispositivos")
     estado = models.CharField(max_length=15, choices=Estado.choices, default=Estado.SIN_VINCULAR)
     ultima_conexion = models.DateTimeField(null=True, blank=True)
-    cola = models.JSONField(default=list, blank=True, help_text="Lecturas pendientes sin señal (store-and-forward)")
+
+    class Meta:
+        constraints = [
+            # Un dado de baja o sin vincular no puede quedar asociado a un equipo
+            models.CheckConstraint(
+                condition=~Q(estado__in=["baja", "sin vincular"]) | Q(equipo__isnull=True),
+                name="dispositivo_sin_equipo_si_inactivo",
+            ),
+        ]
 
     def __str__(self):
         return self.device_id
+
+
+class LecturaPendiente(models.Model):
+    """Lectura que el dispositivo guardó mientras estaba sin señal (store-and-forward).
+    Se envía como Lectura al reconectar y entonces se borra de aquí."""
+
+    dispositivo = models.ForeignKey(Dispositivo, on_delete=models.CASCADE, related_name="pendientes")
+    valor = models.FloatField()
+    fecha = models.DateTimeField()
+
+    class Meta:
+        ordering = ["fecha", "id"]
+        verbose_name_plural = "lecturas pendientes"
 
 
 class Telemetria(models.Model):
@@ -197,14 +306,17 @@ class GestionAlerta(models.Model):
     """Alerta marcada 'en gestión' (las alertas en sí se calculan con el semáforo)."""
 
     equipo = models.OneToOneField(Equipo, on_delete=models.CASCADE, related_name="gestion_alerta")
-    usuario = models.CharField(max_length=120)
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="alertas_en_gestion")
     fecha = models.DateTimeField()
     nota = models.TextField(blank=True)
 
 
 class Auditoria(models.Model):
     fecha = models.DateTimeField()
-    usuario = models.CharField(max_length=120)
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="auditoria",
+        help_text="Vacío = acción del sistema (ej. bloqueo automático de una cuenta)",
+    )
     accion = models.CharField(max_length=60)
     detalle = models.TextField()
     valor_anterior = models.FloatField(null=True, blank=True)
@@ -212,6 +324,7 @@ class Auditoria(models.Model):
     class Meta:
         ordering = ["-fecha", "-id"]
         verbose_name_plural = "auditoría"
+        indexes = [models.Index(fields=["-fecha"], name="auditoria_fecha_idx")]
 
 
 class BloqueoLogin(models.Model):

@@ -25,6 +25,11 @@ def ms(dt):
     return int(dt.timestamp() * 1000) if dt else None
 
 
+def nombre(u, defecto=None):
+    """Nombre para mostrar de un User (o el defecto si no hay usuario)."""
+    return (u.get_full_name() or u.username) if u else defecto
+
+
 def usuario(u):
     if not u or not u.is_authenticated:
         return None
@@ -68,9 +73,14 @@ def equipo(e, con_incidencia=None):
         "lat": e.lat,
         "lng": e.lng,
         "ultimaUbicacion": fecha_hora(e.ultima_ubicacion),
-        "pluma": e.pluma,
+        "pluma": pluma(getattr(e, "pluma", None)),
         "estado": {k: numero(v) if isinstance(v, float) else v for k, v in est.items()},
     }
+
+
+def pluma(p):
+    """Mismo formato que antes: {marca, modelo} o None si el equipo no tiene pluma."""
+    return {"marca": p.marca or None, "modelo": p.modelo or None} if p else None
 
 
 def mantencion(m):
@@ -82,9 +92,9 @@ def mantencion(m):
         "tipo": m.tipo,
         "valor": numero(m.valor),
         "responsable": m.responsable,
-        "registradoPor": m.registrado_por,
+        "registradoPor": nombre(m.registrado_por, ""),
         "insumos": [
-            {"codigo": i.insumo_id, "nombre": i.nombre, "cantidad": numero(i.cantidad), "unidad": i.unidad}
+            {"codigo": i.insumo_id, "nombre": i.insumo.nombre, "cantidad": numero(i.cantidad), "unidad": i.insumo.unidad}
             for i in m.insumos.all()
         ],
     }
@@ -97,7 +107,7 @@ def lectura(l):
         "valor": numero(l.valor),
         "fecha": fecha_hora(l.fecha),
         "origen": l.origen,
-        "usuario": l.usuario,
+        "usuario": l.autor,
         "esCorreccion": l.es_correccion,
         "motivo": l.motivo or None,
         "valorAnterior": numero(l.valor_anterior),
@@ -111,7 +121,7 @@ def incidencia(i):
         "fecha": fecha_hora(i.fecha),
         "valor": numero(i.valor),
         "anterior": numero(i.anterior),
-        "dispositivo": i.dispositivo,
+        "dispositivo": i.dispositivo.device_id if i.dispositivo_id else "",
         "resuelta": i.resuelta,
     }
 
@@ -126,14 +136,14 @@ def dispositivo(d):
         "equipoId": d.equipo_id,
         "estado": d.estado,
         "ultimaConexion": fecha_hora(d.ultima_conexion),
-        "cola": d.cola,
+        "cola": [{"valor": numero(p.valor), "fecha": fecha_hora(p.fecha)} for p in d.pendientes.all()],
     }
 
 
 def gestion(g):
     if not g:
         return None
-    return {"equipoId": g.equipo_id, "enGestion": True, "usuario": g.usuario, "fecha": fecha_hora(g.fecha), "nota": g.nota}
+    return {"equipoId": g.equipo_id, "enGestion": True, "usuario": nombre(g.usuario), "fecha": fecha_hora(g.fecha), "nota": g.nota}
 
 
 def telemetria(t):
@@ -149,7 +159,7 @@ def telemetria(t):
 def auditoria(a):
     return {
         "fecha": fecha_hora(a.fecha),
-        "usuario": a.usuario,
+        "usuario": nombre(a.usuario, "Sistema"),
         "accion": a.accion,
         "detalle": a.detalle,
         "valorAnterior": numero(a.valor_anterior),

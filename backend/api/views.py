@@ -18,7 +18,7 @@ from . import logica, serial
 from .datos.semilla import BASE
 from .errores import ErrorNegocio
 from .models import (
-    Auditoria, BloqueoLogin, Categoria, Destino, Dispositivo, Equipo, Incidencia, Insumo, Lectura, Mantencion, MantencionInsumo,
+    Auditoria, BloqueoLogin, Categoria, Destino, Dispositivo, Equipo, Insumo, Lectura, Mantencion, MantencionInsumo,
 )
 from .reglas import BLOQUEO_MINUTOS, MAX_INTENTOS, validar_password
 
@@ -151,7 +151,7 @@ def insumos(request):
 @api_view(["GET"])
 def auditoria(request):
     logica.requiere(request.user, "auditoria")
-    return Response([serial.auditoria(a) for a in Auditoria.objects.all()])
+    return Response([serial.auditoria(a) for a in Auditoria.objects.select_related("usuario")])
 
 
 # ======================================================================
@@ -162,7 +162,7 @@ def equipos(request):
     if request.method == "POST":
         eq = logica.crear_equipo(request.user, request.data)
         return Response(serial.equipo(eq), status=201)
-    qs = Equipo.objects.select_related("destino")
+    qs = Equipo.objects.all()
     if request.query_params.get("incluirBajas") not in ("1", "true"):
         qs = qs.filter(activo=True)
     con_incidencia = serial.ids_con_incidencia()
@@ -176,7 +176,7 @@ def equipo(request, pk):
     if request.method == "DELETE":
         logica.eliminar_equipo(request.user, pk)
         return Response(status=204)
-    eq = Equipo.objects.select_related("destino").filter(pk=pk).first()
+    eq = Equipo.objects.filter(pk=pk).first()
     return Response(serial.equipo(eq) if eq else None)
 
 
@@ -190,7 +190,8 @@ def lecturas(request, pk):
             request.user, pk, request.data.get("valor"), origen="manual", motivo=(request.data.get("motivo") or "").strip()
         )
         return Response(r)
-    return Response([serial.lectura(l) for l in Lectura.objects.filter(equipo_id=pk)])
+    qs = Lectura.objects.filter(equipo_id=pk).select_related("registrado_por", "dispositivo")
+    return Response([serial.lectura(l) for l in qs])
 
 
 @api_view(["POST"])
@@ -207,7 +208,9 @@ def mantenciones(request):
     if request.method == "POST":
         m = logica.registrar_mantencion(request.user, request.data)
         return Response(serial.mantencion(m), status=201)
-    qs = Mantencion.objects.prefetch_related(Prefetch("insumos", queryset=MantencionInsumo.objects.all()))
+    qs = Mantencion.objects.select_related("registrado_por").prefetch_related(
+        Prefetch("insumos", queryset=MantencionInsumo.objects.select_related("insumo"))
+    )
     if request.query_params.get("equipo"):
         qs = qs.filter(equipo_id=request.query_params["equipo"])
     return Response([serial.mantencion(m) for m in qs])
@@ -249,23 +252,24 @@ def dispositivos(request):
     if request.method == "POST":
         logica.registrar_dispositivo(request.user, request.data.get("deviceId"), request.data.get("tipo"))
         return Response(status=201)
-    return Response([serial.dispositivo(d) for d in Dispositivo.objects.all().order_by("id")])
+    qs = Dispositivo.objects.prefetch_related("pendientes").order_by("id")
+    return Response([serial.dispositivo(d) for d in qs])
 
 
 @api_view(["GET"])
 def dispositivo(request, pk):
     """Ficha del dispositivo: datos, equipo vinculado, lecturas que envió e incidencias que generó."""
     logica.requiere(request.user, "verDispositivos")
-    d = Dispositivo.objects.select_related("equipo__destino").filter(pk=pk).first()
+    d = Dispositivo.objects.select_related("equipo__destino", "equipo__categoria", "equipo__pluma").filter(pk=pk).first()
     if not d:
         return Response(None)
-    lecturas = Lectura.objects.filter(usuario=d.device_id)[:200]
-    incidencias = Incidencia.objects.filter(dispositivo=d.device_id).order_by("-fecha")
+    lecturas = d.lecturas.select_related("dispositivo")[:200]
+    incidencias = d.incidencias.select_related("dispositivo").order_by("-fecha")
     return Response({
         **serial.dispositivo(d),
         "equipo": serial.equipo(d.equipo) if d.equipo else None,
         "lecturas": [serial.lectura(l) for l in lecturas],
-        "totalLecturas": Lectura.objects.filter(usuario=d.device_id).count(),
+        "totalLecturas": d.lecturas.count(),
         "incidencias": [serial.incidencia(i) for i in incidencias],
     })
 

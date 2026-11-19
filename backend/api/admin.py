@@ -2,8 +2,8 @@
 from django.contrib import admin
 
 from .models import (
-    Auditoria, Categoria, Destino, Dispositivo, Equipo, GestionAlerta, Incidencia, Insumo, Lectura,
-    Mantencion, MantencionInsumo, Perfil, Telemetria,
+    Auditoria, Categoria, Destino, Dispositivo, Equipo, GestionAlerta, Incidencia, Insumo, Lectura, LecturaPendiente,
+    Mantencion, MantencionInsumo, Perfil, Pluma, Telemetria,
 )
 
 
@@ -23,21 +23,28 @@ class DestinoAdmin(admin.ModelAdmin):
     list_display = ("nombre", "tipo", "lat", "lng")
 
 
+class PlumaInline(admin.StackedInline):
+    model = Pluma
+    extra = 0
+
+
 @admin.register(Equipo)
 class EquipoAdmin(admin.ModelAdmin):
-    list_display = ("codigo", "nombre", "categoria", "destino", "horometro", "unidad", "intervalo", "ultima_mantencion", "activo")
+    list_display = ("codigo", "nombre", "categoria", "destino", "horometro", "unidad", "intervalo", "ultima_mantencion", "aviso", "activo")
     list_filter = ("categoria", "destino", "activo", "unidad")
     search_fields = ("codigo", "nombre", "marca", "modelo", "patente", "cliente")
+    inlines = [PlumaInline]
 
 
 class MantencionInsumoInline(admin.TabularInline):
     model = MantencionInsumo
     extra = 0
+    autocomplete_fields = ("insumo",)
 
 
 @admin.register(Mantencion)
 class MantencionAdmin(admin.ModelAdmin):
-    list_display = ("fecha", "equipo", "ot", "tipo", "valor", "responsable")
+    list_display = ("fecha", "equipo", "ot", "tipo", "valor", "responsable", "registrado_por")
     list_filter = ("tipo",)
     search_fields = ("equipo__codigo", "ot")
     inlines = [MantencionInsumoInline]
@@ -45,20 +52,28 @@ class MantencionAdmin(admin.ModelAdmin):
 
 @admin.register(Lectura)
 class LecturaAdmin(admin.ModelAdmin):
-    list_display = ("fecha", "equipo", "valor", "origen", "usuario", "es_correccion")
+    list_display = ("fecha", "equipo", "valor", "origen", "registrado_por", "dispositivo", "es_correccion")
     list_filter = ("origen", "es_correccion")
     search_fields = ("equipo__codigo",)
+
+
+class LecturaPendienteInline(admin.TabularInline):
+    model = LecturaPendiente
+    extra = 0
 
 
 @admin.register(Dispositivo)
 class DispositivoAdmin(admin.ModelAdmin):
     list_display = ("device_id", "tipo", "equipo", "estado", "ultima_conexion")
     list_filter = ("estado",)
+    search_fields = ("device_id",)
+    inlines = [LecturaPendienteInline]
 
 
 @admin.register(Insumo)
 class InsumoAdmin(admin.ModelAdmin):
     list_display = ("codigo", "nombre", "stock", "unidad")
+    search_fields = ("codigo", "nombre")
 
 
 @admin.register(Auditoria)
