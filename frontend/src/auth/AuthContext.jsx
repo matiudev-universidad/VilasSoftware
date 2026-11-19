@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { olvidarTodo } from '../lib/memoria'
 import { auth } from '../services'
 
 /* Sesión del usuario disponible en toda la app:
@@ -18,12 +19,14 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (email, password) => {
     const u = await auth.login(email, password)
+    olvidarTodo() // se parte de cero: sin filtros ni páginas de otro usuario
     setUsuario(u)
     return u
   }, [])
 
   const logout = useCallback(async () => {
     await auth.logout()
+    olvidarTodo()
     setUsuario(null)
   }, [])
 

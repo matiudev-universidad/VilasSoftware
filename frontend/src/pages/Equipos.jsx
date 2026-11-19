@@ -6,13 +6,13 @@ import {
   BotonLimpiar, Button, Empty, Icon, IconoTipo, Num, PageHead, Pager, Status, useConfirmar, usePaginacion, useToast,
 } from '../components/ui'
 import { compararCodigo, ORDEN_ESTADO, unidad } from '../lib/formato'
+import { guardar, recordar } from '../lib/memoria'
 import { catalogos, equiposApi, useConsulta } from '../services'
 
 /* Filtros y orden se recuerdan mientras dure la sesión (igual que el prototipo):
    al volver de una ficha, la tabla sigue como estaba. */
 const SIN_FILTROS = { q: '', cat: '', dest: '', est: '' }
-let filtrosGuardados = { ...SIN_FILTROS }
-let ordenGuardado = { col: 'codigo', asc: true }
+const ORDEN_INICIAL = { col: 'codigo', asc: true }
 
 const COMPARAR = {
   codigo: compararCodigo,
@@ -47,9 +47,9 @@ export default function Equipos() {
   // Desde un KPI del panel (?estado=rojo): se parte solo con ese filtro
   const estadoUrl = params.get('estado')
   const [filtros, setFiltrosState] = useState(() =>
-    estadoUrl != null ? { ...SIN_FILTROS, est: estadoUrl } : filtrosGuardados,
+    estadoUrl != null ? { ...SIN_FILTROS, est: estadoUrl } : recordar('equipos:filtros', SIN_FILTROS),
   )
-  const [orden, setOrdenState] = useState(ordenGuardado)
+  const [orden, setOrdenState] = useState(() => recordar('equipos:orden', ORDEN_INICIAL))
   const [modal, setModal] = useState(null) // null | { equipo?: ... }
 
   const lista = (equipos || [])
@@ -71,7 +71,7 @@ export default function Equipos() {
   // Al llegar con ?estado= se guarda el filtro y se limpia la URL
   useEffect(() => {
     if (estadoUrl != null) {
-      filtrosGuardados = { ...SIN_FILTROS, est: estadoUrl }
+      guardar('equipos:filtros', { ...SIN_FILTROS, est: estadoUrl })
       pag.reiniciar()
       navigate('/equipos', { replace: true })
     }
@@ -80,18 +80,18 @@ export default function Equipos() {
 
   const setFiltro = (k, v) => {
     const nuevos = { ...filtros, [k]: v }
-    filtrosGuardados = nuevos
+    guardar('equipos:filtros', nuevos)
     setFiltrosState(nuevos)
     pag.reiniciar()
   }
   const limpiar = () => {
-    filtrosGuardados = { ...SIN_FILTROS }
-    setFiltrosState(filtrosGuardados)
+    guardar('equipos:filtros', SIN_FILTROS)
+    setFiltrosState(SIN_FILTROS)
     pag.reiniciar()
   }
   const ordenar = (col) => {
     const nuevo = { col, asc: orden.col === col ? !orden.asc : true }
-    ordenGuardado = nuevo
+    guardar('equipos:orden', nuevo)
     setOrdenState(nuevo)
     pag.reiniciar()
   }

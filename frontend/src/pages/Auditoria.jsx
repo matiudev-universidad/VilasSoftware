@@ -1,14 +1,12 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
-import { Button, Empty, Icon, Modal, PageHead, Pager, usePaginacion } from '../components/ui'
+import { Button, Empty, Icon, Modal, PageHead, Pager, usePaginacion, useRecordado } from '../components/ui'
 import { fecha, fmt } from '../lib/formato'
 import { catalogos, equiposApi, useConsulta } from '../services'
 
-let filtroGuardado = ''
-
 /* Auditoría: quién hizo cada cambio y cuándo (vAuditoria() del prototipo) */
 export default function Auditoria() {
-  const [filtro, setFiltroState] = useState(filtroGuardado)
+  const [filtro, setFiltro] = useRecordado('auditoria:filtro', '')
   const [abierto, setAbierto] = useState(null)
   const { datos: todos } = useConsulta(() => catalogos.getAuditoria())
 
@@ -19,8 +17,7 @@ export default function Auditoria() {
   if (!todos) return null
 
   const buscar = (texto) => {
-    filtroGuardado = texto
-    setFiltroState(texto)
+    setFiltro(texto)
     pag.reiniciar()
   }
 

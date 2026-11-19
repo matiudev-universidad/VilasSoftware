@@ -1,15 +1,14 @@
 /* Herramientas comunes de las tablas: filtros y orden que se recuerdan durante la sesión,
    encabezados ordenables y el botón "Limpiar filtros". */
 import { useEffect, useState } from 'react'
+import { guardar, recordar } from '../../lib/memoria'
 import { Button } from './Button'
-
-const memoria = {}
 
 /** useState que se recuerda mientras dure la sesión: al volver a la vista sigue igual */
 export function useRecordado(clave, inicial) {
-  const [valor, setValor] = useState(() => (clave in memoria ? memoria[clave] : inicial))
+  const [valor, setValor] = useState(() => recordar(clave, inicial))
   const set = (v) => {
-    memoria[clave] = v
+    guardar(clave, v)
     setValor(v)
   }
   return [valor, set]
@@ -24,10 +23,10 @@ export function useRecordado(clave, inicial) {
 export function useFiltros(clave, vacios, desdeUrl) {
   const conUrl = desdeUrl && Object.values(desdeUrl).some((v) => v != null && v !== '')
   const k = 'filtros:' + clave
-  const [filtros, setFiltros] = useState(() => (conUrl ? { ...vacios, ...limpio(desdeUrl) } : memoria[k] ?? vacios))
+  const [filtros, setFiltros] = useState(() => (conUrl ? { ...vacios, ...limpio(desdeUrl) } : recordar(k, vacios)))
 
   useEffect(() => {
-    memoria[k] = filtros
+    guardar(k, filtros)
   }, [k, filtros])
 
   return {

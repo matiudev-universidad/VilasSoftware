@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
+import { guardar, recordar } from '../../lib/memoria'
 import { Icon } from './Icon'
 
 export const POR_PAGINA = 25
 
 /* La página de cada tabla se recuerda por clave mientras dure la sesión
    (igual que el prototipo: al volver a una vista se mantiene la página). */
-const paginasRecordadas = {}
 
 /**
  * Pagina una lista de a 25.
@@ -13,7 +13,7 @@ const paginasRecordadas = {}
  * reinicio (opcional): JSON de filtros/orden; al cambiar vuelve a la página 1 (o llamar reiniciar()).
  */
 export function usePaginacion(clave, lista, reinicio = '') {
-  const [pedida, setPedida] = useState(() => paginasRecordadas[clave] || 1)
+  const [pedida, setPedida] = useState(() => recordar('pagina:' + clave, 1))
   // reinicio: texto que resume filtros y orden; si cambia, se vuelve a la página 1
   const [reinicioPrevio, setReinicioPrevio] = useState(reinicio)
   if (reinicio !== reinicioPrevio) {
@@ -28,7 +28,7 @@ export function usePaginacion(clave, lista, reinicio = '') {
 
   // Se recuerda la página para cuando el usuario vuelva a esta vista
   useEffect(() => {
-    paginasRecordadas[clave] = pagina
+    guardar('pagina:' + clave, pagina)
   }, [clave, pagina])
 
   return {
