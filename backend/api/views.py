@@ -14,7 +14,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
-from . import logica, serial
+from . import logica, serial, verificacion
 from .datos.semilla import BASE
 from .errores import ErrorNegocio
 from .models import (
@@ -43,6 +43,7 @@ def me(request):
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def login_view(request):
+    """Paso 1: correo y contraseña. Si son correctos se envía un código al correo (paso 2: verificar_codigo)."""
     email = str(request.data.get("email") or "").strip().lower()
     password = request.data.get("password") or ""
     ahora = timezone.now()
@@ -71,9 +72,24 @@ def login_view(request):
         raise ErrorNegocio(f"Correo o contraseña incorrectos. Te {texto} antes del bloqueo temporal.")
 
     BloqueoLogin.objects.filter(email=email).delete()
+    return Response(verificacion.enviar_codigo(request, usuario))
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def verificar_codigo(request):
+    """Paso 2: el código de 6 dígitos que llegó al correo. Recién aquí se abre la sesión."""
+    usuario = verificacion.verificar(request, request.data.get("codigo"))
     login(request, usuario)
-    logica.auditar(usuario, "Inicio de sesión", f"{logica.nombre_de(usuario)} ({usuario.perfil.get_rol_display()})")
+    logica.auditar(usuario, "Inicio de sesión",
+                   f"{logica.nombre_de(usuario)} ({usuario.perfil.get_rol_display()}) · verificado con código al correo")
     return Response(serial.usuario(usuario))
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def reenviar_codigo(request):
+    return Response(verificacion.reenviar(request))
 
 
 @api_view(["POST"])

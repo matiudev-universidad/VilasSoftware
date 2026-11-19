@@ -155,6 +155,21 @@ Inicia sesión en http://localhost:5173 con el **correo** de uno de estos usuari
 
 Recomendamos entrar primero como **administrador** para recorrer todos los módulos.
 
+**Verificación en dos pasos (código al correo)**
+
+1. Ingresa el correo y la contraseña y presiona **Ingresar**.
+2. Se abre la ventana **"Verificación en dos pasos"**. Como el proyecto no tiene un servicio de correo,
+   el correo que llegaría se **simula dentro de la misma ventana** ("Correo simulado") y muestra el código.
+3. Escribe ese código de 6 dígitos (se verifica solo al completar los 6) y entras al sistema.
+
+Reglas del código:
+
+- Es **aleatorio y distinto en cada inicio de sesión**; en la base de datos solo se guarda cifrado.
+- **Vence en 5 minutos** y sirve **una sola vez**.
+- Con **5 códigos incorrectos** se anula y hay que volver a ingresar la contraseña.
+- **"Reenviar código"** genera uno nuevo (anula el anterior) y se habilita después de 30 segundos.
+- El "correo" también aparece en la terminal donde corre `python manage.py runserver`.
+
 **Seguridad del inicio de sesión**
 
 - Tras **5 intentos fallidos** la cuenta se bloquea **5 minutos**.
@@ -214,6 +229,7 @@ Después de hacer `git pull`, ejecuta `python manage.py migrate` por si llegaron
 | `No module named django` | El entorno virtual no está activo: repite el paso 3.3. |
 | No puedo iniciar sesión / "Correo o contraseña incorrectos" | Revisa que hayas ejecutado `python manage.py cargar_datos` (paso 3.7) y que uses el correo completo. |
 | "Cuenta bloqueada temporalmente" | Hubo 5 intentos fallidos: espera 5 minutos. |
+| "El código venció" o "Demasiados códigos incorrectos" | Usa **Reenviar código** o vuelve a ingresar correo y contraseña. |
 | La página carga pero no muestra datos o da error de red | El backend no está corriendo: revisa la Terminal 1 (`python manage.py runserver`). |
 | `Port 8000 is already in use` | Ya hay un servidor abierto. Ciérralo, o usa `python manage.py runserver 8001` y cambia el puerto en `frontend/vite.config.js`. |
 | `no such table` | Falta crear la base: `python manage.py migrate`. |

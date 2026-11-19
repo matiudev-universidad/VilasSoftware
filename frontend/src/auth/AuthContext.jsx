@@ -3,7 +3,8 @@ import { olvidarTodo } from '../lib/memoria'
 import { auth } from '../services'
 
 /* Sesión del usuario disponible en toda la app:
-   const { usuario, puede, login, logout } = useAuth() */
+   const { usuario, puede, login, verificar, logout } = useAuth()
+   Inicio de sesión en dos pasos: login(correo, contraseña) → código al correo → verificar(código). */
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
@@ -17,9 +18,13 @@ export function AuthProvider({ children }) {
       .finally(() => setCargando(false))
   }, [])
 
-  const login = useCallback(async (email, password) => {
-    const u = await auth.login(email, password)
-    olvidarTodo() // se parte de cero: sin filtros ni páginas de otro usuario
+  // Paso 1: devuelve los datos del código enviado (la sesión aún no se abre)
+  const login = useCallback((email, password) => auth.login(email, password), [])
+
+  // Paso 2: con el código correcto se abre la sesión. Se parte de cero: sin filtros ni páginas de otro usuario.
+  const verificar = useCallback(async (codigo) => {
+    const u = await auth.verificarCodigo(codigo)
+    olvidarTodo()
     setUsuario(u)
     return u
   }, [])
@@ -34,7 +39,7 @@ export function AuthProvider({ children }) {
   const puede = useCallback((permiso) => !!usuario?.permisos?.includes(permiso), [usuario])
 
   return (
-    <AuthContext.Provider value={{ usuario, cargando, login, logout, puede }}>
+    <AuthContext.Provider value={{ usuario, cargando, login, verificar, logout, puede }}>
       {children}
     </AuthContext.Provider>
   )

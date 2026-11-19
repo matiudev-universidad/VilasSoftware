@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router'
 import { useAuth } from '../auth/AuthContext'
 import { Icon, useToast } from '../components/ui'
 import { RecuperarPassword } from '../components/sesion/RecuperarPassword'
+import { VerificarCodigo } from '../components/sesion/VerificarCodigo'
 import { catalogos, useConsulta } from '../services'
 
 const relleno = (n, largo) => (n == null ? '—' : String(n).padStart(largo, '0'))
@@ -18,17 +19,22 @@ export default function Login() {
   const [error, setError] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [recuperar, setRecuperar] = useState(false)
+  const [desafio, setDesafio] = useState(null) // código enviado al correo (paso 2)
 
-  if (usuario) return <Navigate to="/dashboard" replace />
+  if (usuario && !desafio) return <Navigate to="/dashboard" replace />
+
+  function alVerificar(u) {
+    setDesafio(null)
+    toast(`Sesión iniciada como ${u.rolNombre}`)
+    navigate('/dashboard', { replace: true })
+  }
 
   async function alEnviar(e) {
     e.preventDefault()
     setEnviando(true)
     try {
-      const u = await login(email, password)
+      setDesafio(await login(email, password))
       setError('')
-      toast(`Sesión iniciada como ${u.rolNombre}`)
-      navigate('/dashboard', { replace: true })
     } catch (err) {
       setError(err.message)
     } finally {
@@ -122,6 +128,16 @@ export default function Login() {
         <div className="login-foot mono">INACAP · Asencio · García · Gonzales · Pavez</div>
       </div>
 
+      {desafio && (
+        <VerificarCodigo
+          desafio={desafio}
+          onListo={alVerificar}
+          onCancelar={(mensaje) => {
+            setDesafio(null)
+            setError(mensaje || '')
+          }}
+        />
+      )}
       {recuperar && <RecuperarPassword correoInicial={email.trim()} onClose={() => setRecuperar(false)} />}
     </section>
   )

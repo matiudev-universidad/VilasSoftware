@@ -1,8 +1,18 @@
 /* Autenticación contra Django. La contraseña se compara en el servidor (authenticate()). */
 import { api } from './http'
 
-/** Devuelve el usuario { id, nombre, email, rol, rolNombre, permisos }. Si falla, lanza Error con el mensaje. */
+/**
+ * Paso 1: correo y contraseña. Si son correctos, el servidor envía un código al correo y responde
+ * { requiereCodigo, correo, codigoSimulado, venceEn, reenviarEn }. Si falla, lanza Error con el mensaje.
+ */
 export const login = (email, password) => api.post('/auth/login/', { email, password })
+
+/** Paso 2: código de 6 dígitos. Devuelve el usuario { id, nombre, email, rol, rolNombre, permisos }.
+ *  Error con status 409 = hay que volver a ingresar correo y contraseña. */
+export const verificarCodigo = (codigo) => api.post('/auth/verificar-codigo/', { codigo })
+
+/** Pide un código nuevo (anula el anterior). Misma respuesta que login. */
+export const reenviarCodigo = () => api.post('/auth/reenviar-codigo/')
 
 export const logout = () => api.post('/auth/logout/')
 

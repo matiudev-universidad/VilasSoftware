@@ -22,6 +22,12 @@ PASS_MIN = 12
 MAX_INTENTOS = 5          # intentos fallidos antes del bloqueo
 BLOQUEO_MINUTOS = 5       # duración del bloqueo temporal
 
+# ---------------- Verificación en dos pasos (código al correo) ----------------
+CODIGO_DIGITOS = 6
+CODIGO_VIGENCIA_MINUTOS = 5   # el código vence a los 5 minutos
+CODIGO_MAX_INTENTOS = 5       # códigos incorrectos antes de anularlo (hay que volver a ingresar la contraseña)
+CODIGO_REENVIO_SEGUNDOS = 30  # espera antes de pedir otro código
+
 
 def validar_password(p):
     """Política: mínimo 12 caracteres y al menos un carácter especial."""

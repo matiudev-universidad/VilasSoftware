@@ -47,3 +47,19 @@
 
 /* Ficha de dispositivo */
 .disp-acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+
+/* Verificación en dos pasos: correo simulado y campo del código */
+.correo-simulado { margin: 14px 0 16px; border: 1px dashed var(--line); border-radius: var(--r); background: var(--paper); padding: 12px 14px; animation: rise .3s ease; }
+.correo-simulado .cs-head { display: flex; align-items: center; gap: 7px; font-weight: 700; font-size: 13.5px; }
+.correo-simulado .cs-tag { margin-left: auto; font-size: 10.5px; letter-spacing: .04em; color: var(--amber-text); background: var(--amber-tint); padding: 2px 6px; border-radius: 3px; }
+.correo-simulado .cs-meta { margin-top: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line-2); font-size: 11.5px; color: var(--muted); line-height: 1.6; }
+.correo-simulado .cs-meta span { display: inline-block; width: 56px; }
+.correo-simulado .cs-texto { margin: 10px 0 4px; font-size: 13.5px; }
+.correo-simulado .cs-codigo { font-size: 30px; font-weight: 700; letter-spacing: .32em; color: var(--ink); }
+.correo-simulado .cs-nota { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+.input-codigo { width: 100%; font-size: 24px; letter-spacing: .5em; text-align: center; padding: 10px 12px; }
+.codigo-pie { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; }
+.codigo-pie span { display: inline-flex; align-items: center; gap: 5px; }
+.codigo-pie .link-btn:disabled { opacity: .5; cursor: default; text-decoration: none; }
+.codigo-pie .link-btn:disabled:hover { color: var(--muted); }
+.txt-rojo { color: var(--red); font-weight: 600; }

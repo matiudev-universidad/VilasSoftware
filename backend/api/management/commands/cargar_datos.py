@@ -15,7 +15,7 @@ from django.utils import timezone
 
 from api.datos import semilla
 from api.models import (
-    Auditoria, BloqueoLogin, Categoria, Destino, Dispositivo, Equipo, EstadoSync, GestionAlerta,
+    Auditoria, BloqueoLogin, Categoria, CodigoVerificacion, Destino, Dispositivo, Equipo, EstadoSync, GestionAlerta,
     Incidencia, Insumo, Lectura, LecturaPendiente, Mantencion, MantencionInsumo, Perfil, Pluma, Telemetria,
 )
 
@@ -56,7 +56,7 @@ class Command(BaseCommand):
 
     def borrar_todo(self):
         # Orden: primero lo que apunta a otras tablas (las FK con PROTECT impiden borrar al revés)
-        for modelo in (Auditoria, BloqueoLogin, GestionAlerta, Incidencia, Telemetria, Lectura, LecturaPendiente,
+        for modelo in (Auditoria, BloqueoLogin, CodigoVerificacion, GestionAlerta, Incidencia, Telemetria, Lectura, LecturaPendiente,
                        Dispositivo, MantencionInsumo, Mantencion, Pluma, Equipo, Insumo, Destino, Categoria, EstadoSync):
             modelo.objects.all().delete()
 

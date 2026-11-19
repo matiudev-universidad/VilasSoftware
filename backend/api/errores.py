@@ -10,5 +10,12 @@ class ErrorNegocio(APIException):
     default_detail = "Solicitud inválida."
 
 
+class ReiniciarLogin(ErrorNegocio):
+    """El inicio de sesión en dos pasos ya no sirve (código anulado o inexistente) → HTTP 409.
+    La interfaz vuelve a pedir correo y contraseña."""
+
+    status_code = status.HTTP_409_CONFLICT
+
+
 class SinPermiso(PermissionDenied):
     default_detail = "Tu rol no tiene permiso para esta acción."

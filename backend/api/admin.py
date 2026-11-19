@@ -2,7 +2,7 @@
 from django.contrib import admin
 
 from .models import (
-    Auditoria, Categoria, Destino, Dispositivo, Equipo, GestionAlerta, Incidencia, Insumo, Lectura, LecturaPendiente,
+    Auditoria, Categoria, CodigoVerificacion, Destino, Dispositivo, Equipo, GestionAlerta, Incidencia, Insumo, Lectura, LecturaPendiente,
     Mantencion, MantencionInsumo, Perfil, Pluma, Telemetria,
 )
 
@@ -80,6 +80,12 @@ class InsumoAdmin(admin.ModelAdmin):
 class AuditoriaAdmin(admin.ModelAdmin):
     list_display = ("fecha", "usuario", "accion", "detalle")
     list_filter = ("accion",)
+
+
+@admin.register(CodigoVerificacion)
+class CodigoVerificacionAdmin(admin.ModelAdmin):
+    list_display = ("usuario", "creado", "expira", "intentos", "usado")
+    readonly_fields = ("codigo_hash",)
 
 
 admin.site.register([Incidencia, Telemetria, GestionAlerta])

@@ -327,6 +327,23 @@ class Auditoria(models.Model):
         indexes = [models.Index(fields=["-fecha"], name="auditoria_fecha_idx")]
 
 
+class CodigoVerificacion(models.Model):
+    """Código de un solo uso que se envía al correo para completar el inicio de sesión.
+    Solo se guarda su HMAC-SHA256 (nunca el código en texto plano)."""
+
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="codigos_verificacion")
+    codigo_hash = models.CharField(max_length=64)
+    creado = models.DateTimeField()
+    expira = models.DateTimeField()
+    intentos = models.PositiveSmallIntegerField(default=0)
+    usado = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = "código de verificación"
+        verbose_name_plural = "códigos de verificación"
+        indexes = [models.Index(fields=["usuario", "-creado"], name="codigo_usuario_creado_idx")]
+
+
 class BloqueoLogin(models.Model):
     """Intentos fallidos por correo: 5 fallos bloquean la cuenta 5 minutos."""
 
