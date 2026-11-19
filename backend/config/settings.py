@@ -24,11 +24,13 @@ load_dotenv(BASE_DIR / ".env")
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-dev-only-change-me")
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() == "true"
+
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-dev-only-change-me")
+if not DEBUG and (SECRET_KEY.startswith("django-insecure") or SECRET_KEY == "cambia-esta-clave" or len(SECRET_KEY) < 40):
+    raise RuntimeError("En producción (DJANGO_DEBUG=False) define DJANGO_SECRET_KEY en backend/.env")
 
 ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
@@ -51,6 +53,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",  # sirve el frontend compilado y los estáticos del /admin
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -127,6 +130,12 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"  # python manage.py collectstatic (estilos del /admin)
+
+# Frontend React compilado (npm run build:django → backend/web). Django lo sirve en producción,
+# así frontend y API comparten dominio y la sesión por cookie funciona sin CORS.
+FRONTEND_DIR = BASE_DIR / "web"
+WHITENOISE_ROOT = FRONTEND_DIR if FRONTEND_DIR.exists() else None
 
 # Contraseñas: Django guarda con PBKDF2-SHA256 (el primero de la lista).
 # PrototipoPBKDF2Hasher solo verifica los hashes heredados del prototipo y,
@@ -168,3 +177,12 @@ CSRF_TRUSTED_ORIGINS = os.getenv(
 CORS_ALLOWED_ORIGINS = os.getenv(
     "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
 ).split(",")
+
+
+# Producción (DJANGO_DEBUG=False): cookies solo por HTTPS
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = "DENY"

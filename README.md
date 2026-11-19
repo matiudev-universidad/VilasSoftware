@@ -245,12 +245,126 @@ Después de hacer `git pull`, ejecuta `python manage.py migrate` por si llegaron
 | `frontend` | `npm run lint` | Revisa el código del frontend |
 | `frontend` | `npm run preview` | Sirve la versión de producción generada |
 
-Para producción, `VITE_API_URL` (en `frontend/.env`) define la URL pública del backend, y en `backend/.env`
-hay que poner `DJANGO_DEBUG=False`, una `DJANGO_SECRET_KEY` propia y el dominio en `DJANGO_ALLOWED_HOSTS`.
+Para publicar el sistema en internet, ver la sección **10. Despliegue en PythonAnywhere**.
 
 ---
 
-## 10. Estructura del proyecto
+## 10. Despliegue en PythonAnywhere (producción gratuita)
+
+En producción **Django sirve todo**: la API, el panel `/admin` y el frontend React ya compilado
+(carpeta `backend/web`). Así el sistema queda en una sola dirección, `https://TUUSUARIO.pythonanywhere.com`.
+La base de datos sigue siendo SQLite: en PythonAnywhere el disco es permanente y los datos no se pierden.
+
+> En todos los pasos reemplaza **`TUUSUARIO`** por tu nombre de usuario de PythonAnywhere.
+
+### 10.1. Descargar el proyecto (consola Bash de PythonAnywhere)
+
+En el panel: **Consoles → Bash**.
+
+```bash
+git clone https://github.com/matiudev-universidad/VilasSoftware.git
+cd VilasSoftware/backend
+```
+
+### 10.2. Crear el entorno virtual e instalar dependencias
+
+El proyecto necesita **Python 3.12 o superior**. Revisa cuáles hay con `ls /usr/bin/python3.1*`
+y usa la más nueva (ejemplo con 3.13):
+
+```bash
+python3.13 -m venv ~/.venvs/vilas
+source ~/.venvs/vilas/bin/activate
+pip install -r requirements.txt
+```
+
+### 10.3. Configurar el archivo `.env` de producción
+
+Genera una clave secreta y cópiala:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(50))"
+```
+
+Crea el archivo con `nano .env` y pega esto (con tu clave y tu usuario):
+
+```
+DJANGO_DEBUG=False
+DJANGO_SECRET_KEY=LA_CLAVE_QUE_GENERASTE
+DJANGO_ALLOWED_HOSTS=TUUSUARIO.pythonanywhere.com
+CSRF_TRUSTED_ORIGINS=https://TUUSUARIO.pythonanywhere.com
+```
+
+Guarda con `Ctrl+O`, `Enter` y sal con `Ctrl+X`.
+
+### 10.4. Crear la base de datos, cargar los datos y preparar los estáticos
+
+```bash
+python manage.py migrate
+python manage.py cargar_datos
+python manage.py collectstatic --noinput
+```
+
+### 10.5. Crear la aplicación web
+
+1. Pestaña **Web → Add a new web app → Next**.
+2. Elige **Manual configuration** (no "Django") y la **misma versión de Python** del paso 10.2.
+3. En la sección **Virtualenv** escribe: `/home/TUUSUARIO/.venvs/vilas`
+4. En **Code**: *Source code* y *Working directory* = `/home/TUUSUARIO/VilasSoftware/backend`
+5. Haz clic en el enlace del **WSGI configuration file**, borra todo su contenido y pega:
+
+```python
+import os
+import sys
+
+path = "/home/TUUSUARIO/VilasSoftware/backend"
+if path not in sys.path:
+    sys.path.insert(0, path)
+
+os.environ["DJANGO_SETTINGS_MODULE"] = "config.settings"
+
+from django.core.wsgi import get_wsgi_application
+application = get_wsgi_application()
+```
+
+   Guarda con el botón **Save**.
+6. En la sección **Security** activa **Force HTTPS**.
+7. Arriba de la pestaña **Web**, presiona el botón verde **Reload**.
+
+Abre `https://TUUSUARIO.pythonanywhere.com` y entra como en la sección 5.
+
+### 10.6. Actualizar después de cambios
+
+Antes de subir cambios del **frontend**, compílalo para Django y súbelo al repositorio:
+
+```bash
+cd frontend
+npm run build:django
+```
+
+(Esto regenera `backend/web`; no se edita a mano.) Luego, en la consola Bash de PythonAnywhere:
+
+```bash
+cd ~/VilasSoftware && git pull
+cd backend && source ~/.venvs/vilas/bin/activate
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py collectstatic --noinput
+```
+
+y presiona **Reload** en la pestaña **Web**.
+
+### 10.7. Mantenerlo activo (plan gratuito)
+
+- La aplicación **no se duerme**, pero el plan gratuito la **desactiva cada 3 meses**: entra a la pestaña
+  **Web** y presiona **"Run until 3 months from today"** (PythonAnywhere avisa por correo antes).
+- Hazlo unos días antes de la presentación, y el día anterior prueba el ingreso con cada rol.
+- Respaldo de los datos: descarga `backend/db.sqlite3` desde la pestaña **Files**.
+- Si algo falla, revisa el **Error log** en la pestaña **Web**. El "correo" con el código de
+  verificación aparece en el **Server log**.
+
+---
+
+## 11. Estructura del proyecto
 
 ```
 VilasSoftware/
@@ -266,6 +380,7 @@ VilasSoftware/
 │   │   ├── migrations/          # Historial de cambios de la base de datos
 │   │   ├── datos/               # Datos iniciales (semilla.py y flota.json)
 │   │   └── management/commands/cargar_datos.py
+│   ├── web/                     # Frontend compilado que Django sirve en producción (generado)
 │   ├── manage.py
 │   ├── requirements.txt
 │   └── .env.example

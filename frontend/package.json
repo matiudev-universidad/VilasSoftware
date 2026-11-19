@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:django": "vite build --outDir ../backend/web --emptyOutDir",
     "lint": "oxlint",
     "preview": "vite preview"
   },
