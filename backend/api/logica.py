@@ -5,7 +5,7 @@ Cada función recibe el usuario que actúa para validar permisos y registrar la 
 import random
 import re
 import time
-from datetime import timedelta
+from datetime import date, timedelta
 
 from django.db import transaction
 from django.utils import timezone
@@ -218,8 +218,10 @@ def resolver_incidencia(usuario, incidencia_id, nota=""):
 def registrar_mantencion(usuario, d):
     requiere(usuario, "registrarMantencion")
     eq = obtener_equipo(d.get("equipoId"))
-    if not d.get("fecha"):
-        raise ErrorNegocio("La fecha es obligatoria.")
+    try:
+        fecha = date.fromisoformat(str(d.get("fecha") or ""))
+    except ValueError:
+        raise ErrorNegocio("Ingresa una fecha válida.")
     valor = _num(d.get("valor"))
     if valor is None or valor < 0:
         raise ErrorNegocio("Ingresa el horómetro al momento de la mantención.")
@@ -237,7 +239,7 @@ def registrar_mantencion(usuario, d):
         insumos.append((insumo, cantidad))
     m = Mantencion.objects.create(
         equipo=eq, ot=(d.get("ot") or "").strip() or "OT-" + str(int(time.time() * 1000))[-6:],
-        fecha=d["fecha"], tipo=d.get("tipo") or "", valor=valor,
+        fecha=fecha, tipo=d.get("tipo") or "", valor=valor,
         responsable=(d.get("responsable") or "").strip() or nombre_de(usuario), registrado_por=_autenticado(usuario),
     )
     MantencionInsumo.objects.bulk_create(
